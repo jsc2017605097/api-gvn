@@ -1,4 +1,4 @@
-import { Controller, Get, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Query, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { MemberContactsService } from './member-contacts.service';
 import { QueryMemberContactsDto, FilterDto } from '../common/dto/pagination.dto';
 
@@ -24,6 +24,12 @@ interface ApiResponseFormat {
       total_pages: number;
     };
   };
+}
+
+interface DetailApiResponseFormat {
+  message: string;
+  error: boolean;
+  data: any;
 }
 
 @Controller('member-contacts')
@@ -117,6 +123,14 @@ export class MemberContactsController {
     };
 
     return await this.memberContactsService.findAll(serviceQuery);
+  }
+
+  @Get(':member_contact')
+  @HttpCode(HttpStatus.OK)
+  async findOne(
+    @Param('member_contact') memberContact: string,
+  ): Promise<DetailApiResponseFormat> {
+    return await this.memberContactsService.findOneByMemberContact(memberContact);
   }
 }
 

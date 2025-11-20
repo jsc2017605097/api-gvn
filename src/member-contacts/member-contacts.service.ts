@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { MemberContact, MemberContactDocument } from './schemas/member-contact.schema';
+import { MemberContactDetail, MemberContactDetailDocument } from './schemas/member-contact-detail.schema';
 import { QueryMemberContactsDto, FilterDto, SortDto } from '../common/dto/pagination.dto';
 import { createVietnameseRegex } from '../common/utils/string.util';
 
@@ -37,11 +38,21 @@ interface ApiResponseFormat {
   };
 }
 
+interface DetailApiResponseFormat {
+  message: string;
+  error: boolean;
+  data: any;
+}
+
 @Injectable()
 export class MemberContactsService {
+  private readonly logger = new Logger(MemberContactsService.name);
+
   constructor(
     @InjectModel(MemberContact.name)
     private memberContactModel: Model<MemberContactDocument>,
+    @InjectModel(MemberContactDetail.name)
+    private memberContactDetailModel: Model<MemberContactDetailDocument>,
   ) {}
 
   async findAll(query: QueryMemberContactsDto): Promise<ApiResponseFormat> {
@@ -208,6 +219,104 @@ export class MemberContactsService {
         data: memberContacts,
         pagination: pagination,
       },
+    };
+  }
+
+  async findOneByMemberContact(memberContact: string): Promise<DetailApiResponseFormat> {
+    // Log query để debug
+    const query = { member_contact: memberContact };
+    const collectionName = this.memberContactDetailModel.collection.name;
+    
+    this.logger.log('========================================');
+    this.logger.log('🔍 [DEBUG] Query tìm chi tiết member contact');
+    this.logger.log('========================================');
+    this.logger.log(`📋 Collection name: ${collectionName}`);
+    this.logger.log(`🔑 Query filter: ${JSON.stringify(query, null, 2)}`);
+    this.logger.log(`🔎 Member Contact: ${memberContact}`);
+    this.logger.log(`🔎 Member Contact type: ${typeof memberContact}`);
+    this.logger.log(`🔎 Member Contact length: ${memberContact.length}`);
+    this.logger.log('========================================');
+
+    // Kiểm tra collection có dữ liệu không
+    const count = await this.memberContactDetailModel.countDocuments({}).exec();
+    this.logger.log(`📊 Tổng số documents trong collection: ${count}`);
+    
+    // Lấy 1 document bất kỳ để xem cấu trúc và giá trị member_contact
+    const sample = await this.memberContactDetailModel.findOne({}).lean().exec();
+    if (sample) {
+      this.logger.log(`📄 Sample document:`);
+      this.logger.log(`   - _id: ${sample._id}`);
+      this.logger.log(`   - member_contact: "${sample.member_contact}"`);
+      this.logger.log(`   - member_contact type: ${typeof sample.member_contact}`);
+      this.logger.log(`   - member_contact length: ${sample.member_contact?.length || 0}`);
+      this.logger.log(`   - Các keys: ${Object.keys(sample).join(', ')}`);
+    } else {
+      this.logger.warn('⚠️ Collection rỗng hoặc không có dữ liệu');
+    }
+
+    // Thử query với nhiều cách khác nhau
+    this.logger.log('🔍 Thử query chính xác...');
+    let detail = await this.memberContactDetailModel
+      .findOne(query)
+      .lean()
+      .exec();
+
+    // Nếu không tìm thấy, thử query trực tiếp với collection
+    if (!detail) {
+      this.logger.warn('⚠️ Không tìm thấy với query chính xác, thử với regex...');
+      
+      // Thử với regex không phân biệt hoa thường
+      const regexQuery = { member_contact: { $regex: new RegExp(`^${memberContact}$`, 'i') } };
+      this.logger.log(`🔍 Query với regex: ${JSON.stringify(regexQuery, null, 2)}`);
+      
+      detail = await this.memberContactDetailModel
+        .findOne(regexQuery)
+        .lean()
+        .exec();
+    }
+
+    // Nếu vẫn không tìm thấy, thử tìm với contains
+    if (!detail) {
+      this.logger.warn('⚠️ Không tìm thấy với regex, thử tìm contains...');
+      
+      const containsQuery = { member_contact: { $regex: memberContact, $options: 'i' } };
+      this.logger.log(`🔍 Query contains: ${JSON.stringify(containsQuery, null, 2)}`);
+      
+      detail = await this.memberContactDetailModel
+        .findOne(containsQuery)
+        .lean()
+        .exec();
+    }
+
+    // Log kết quả
+    if (detail) {
+      this.logger.log('✅ [DEBUG] Tìm thấy dữ liệu');
+      this.logger.log(`📄 Document ID: ${detail._id}`);
+      this.logger.log(`📊 Số lượng fields: ${Object.keys(detail).length}`);
+      this.logger.log(`🔑 Member contact trong DB: "${detail.member_contact}"`);
+      this.logger.log(`🔑 Member contact type: ${typeof detail.member_contact}`);
+    } else {
+      this.logger.error('❌ [DEBUG] Không tìm thấy dữ liệu sau tất cả các cách thử');
+      this.logger.error(`🔍 Query đã thực thi: ${JSON.stringify(query, null, 2)}`);
+      this.logger.error(`📋 Collection: ${collectionName}`);
+      this.logger.error(`🔎 Tìm kiếm với: "${memberContact}"`);
+    }
+    this.logger.log('========================================');
+
+    if (!detail) {
+      throw new NotFoundException(`Không tìm thấy member contact với mã: ${memberContact}`);
+    }
+
+    // Transform _id to string
+    const result: any = {
+      ...detail,
+      _id: detail._id.toString(),
+    };
+
+    return {
+      message: 'Lấy chi tiết khách hàng thành công',
+      error: false,
+      data: result,
     };
   }
 }
