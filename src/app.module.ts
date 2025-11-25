@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MongodbLoggerService } from './mongodb-logger.service';
 import { MemberContactsModule } from './member-contacts/member-contacts.module';
+import { SaleOrderOfflineDetailsModule } from './sale-order-offline-details/sale-order-offline-details.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { MemberContactsModule } from './member-contacts/member-contacts.module';
       },
     }),
     MemberContactsModule,
+    SaleOrderOfflineDetailsModule,
   ],
   controllers: [AppController],
   providers: [AppService, MongodbLoggerService],
